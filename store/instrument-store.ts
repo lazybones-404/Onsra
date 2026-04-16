@@ -1,33 +1,33 @@
-/**
- * Instrument store — persisted to MMKV.
- * Tracks which instrument the user selected during onboarding.
- * All Pillar 1-3 features read from this to personalise language,
- * diagrams, amp models, and tone advice.
- */
 import { create } from 'zustand';
-import { DEFAULT_INSTRUMENT, InstrumentId } from '@/constants/instruments';
-import { Storage, STORAGE_KEYS } from '@/lib/storage/mmkv';
+import type { InstrumentId } from '@/constants/instruments';
+import type { Tuning } from '@/constants/tunings';
+import { getDefaultTuning } from '@/constants/tunings';
+import { useUserStore } from './user-store';
 
 interface InstrumentState {
-  instrument: InstrumentId;
-  setInstrument: (id: InstrumentId) => void;
+  activeInstrument: InstrumentId;
+  activeTuning: Tuning;
+  selectedStringIndex: number;
+
+  setActiveInstrument: (instrument: InstrumentId) => void;
+  setActiveTuning: (tuning: Tuning) => void;
+  setSelectedStringIndex: (index: number) => void;
 }
 
-function loadPersistedInstrument(): InstrumentId {
-  try {
-    return (Storage.getString(STORAGE_KEYS.ACTIVE_INSTRUMENT) as InstrumentId) ?? DEFAULT_INSTRUMENT;
-  } catch {
-    return DEFAULT_INSTRUMENT;
-  }
-}
+export const useInstrumentStore = create<InstrumentState>((set, get) => ({
+  activeInstrument: useUserStore.getState().primaryInstrument,
+  activeTuning: getDefaultTuning(useUserStore.getState().primaryInstrument),
+  selectedStringIndex: 0,
 
-export const useInstrumentStore = create<InstrumentState>((set) => ({
-  instrument: loadPersistedInstrument(),
-
-  setInstrument: (id) => {
-    try {
-      Storage.setString(STORAGE_KEYS.ACTIVE_INSTRUMENT, id);
-    } catch {}
-    set({ instrument: id });
+  setActiveInstrument: (instrument) => {
+    set({
+      activeInstrument: instrument,
+      activeTuning: getDefaultTuning(instrument),
+      selectedStringIndex: 0,
+    });
   },
+
+  setActiveTuning: (tuning) => set({ activeTuning: tuning }),
+
+  setSelectedStringIndex: (index) => set({ selectedStringIndex: index }),
 }));

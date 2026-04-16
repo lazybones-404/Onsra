@@ -1,42 +1,43 @@
 {
   "cli": {
-    "version": ">= 13.0.0",
-    "promptToConfigurePushNotifications": false
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
-        "resourceClass": "m-medium"
+        "simulator": true
       },
-      "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleDebug"
+      "env": {
+        "APP_VARIANT": "development"
       }
     },
     "preview": {
       "distribution": "internal",
-      "ios": {
-        "resourceClass": "m-medium"
-      },
-      "android": {
-        "buildType": "apk"
+      "channel": "preview",
+      "env": {
+        "APP_VARIANT": "preview"
       }
     },
     "production": {
-      "ios": {
-        "resourceClass": "m-medium"
-      },
-      "android": {
-        "buildType": "app-bundle"
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "APP_VARIANT": "production"
       }
     }
   },
   "submit": {
     "production": {
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+      },
       "android": {
-        "serviceAccountKeyPath": "./google-play-key.json",
+        "serviceAccountKeyPath": "./google-service-account.json",
         "track": "production"
       }
     }

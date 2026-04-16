@@ -13,9 +13,14 @@
       "bundleIdentifier": "com.onsra.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Onsra uses your microphone to detect pitch for the tuner and key detection features.",
+        "NSMicrophoneUsageDescription": "Onsra uses your microphone to detect pitch for tuning, chord identification, and vocal pitch display.",
+        "NSCameraUsageDescription": "Onsra may use your camera for profile photos.",
+        "NSUserTrackingUsageDescription": "We show relevant ads to keep Onsra free. Your data is never sold.",
         "UIBackgroundModes": [
           "audio"
+        ],
+        "SKAdNetworkItems": [
+          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
         ]
       }
     },
@@ -72,7 +77,20 @@
         }
       ],
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

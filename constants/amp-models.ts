@@ -43,10 +43,8 @@ export const AMP_MODELS: AmpModel[] = [
   { id: 'sm58', name: 'SM58 Dynamic', brand: 'Shure', character: 'Live workhorse, mid-forward', instruments: ['vocalist'] },
   { id: 'u87', name: 'U87 Condenser', brand: 'Neumann', character: 'Studio standard, full-range', instruments: ['vocalist'] },
   { id: 'blue-yeti', name: 'Yeti / Spark', brand: 'Blue', character: 'Home studio USB', instruments: ['vocalist'] },
-  // ─── Producer / Songwriter ────────────────────────────────────
-  { id: 'studio-monitors', name: 'Studio Monitors', brand: 'Studio', character: 'Reference monitoring', instruments: ['producer', 'songwriter'] },
-  { id: 'headphones', name: 'Headphone Mix', brand: 'Studio', character: 'Closed-back reference', instruments: ['producer', 'songwriter'] },
-  { id: 'interface-di', name: 'Audio Interface DI', brand: 'Studio', character: 'Clean capture, neutral', instruments: ['producer', 'songwriter'] },
+  // ─── Violinist ────────────────────────────────────────────────
+  { id: 'violin-direct', name: 'Direct / DI', brand: 'Studio', character: 'Clean signal pickup', instruments: ['violinist'] as const },
 ];
 
 export function getAmpModelsForInstrument(instrument: InstrumentId): AmpModel[] {

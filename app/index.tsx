@@ -1,27 +1,27 @@
-/**
- * Root routing gate.
- *
- * Launch flow:
- *   1. Consent not yet shown  → /consent  (analytics consent screen)
- *   2. Onboarding incomplete  → /onboarding
- *   3. Everything done        → /(tabs)
- */
-import { Redirect } from 'expo-router';
+import { useEffect } from 'react';
+import { router } from 'expo-router';
+import { View, ActivityIndicator } from 'react-native';
+import { useUserStore } from '@/store/user-store';
+import { useSessionStore } from '@/store/session-store';
+import { colors } from '@/constants/theme';
 
-import { Storage, STORAGE_KEYS } from '@/lib/storage/mmkv';
+export default function GatePage() {
+  const isOnboarded = useUserStore((s) => s.isOnboarded);
+  const isLoading = useSessionStore((s) => s.isLoading);
 
-export default function RootIndex() {
-  let consentShown = false;
-  let onboardingComplete = false;
+  useEffect(() => {
+    if (isLoading) return;
 
-  try {
-    consentShown = Storage.getBoolean(STORAGE_KEYS.ANALYTICS_CONSENT_SHOWN);
-    onboardingComplete = Storage.getBoolean(STORAGE_KEYS.ONBOARDING_COMPLETE);
-  } catch {
-    // MMKV not yet available (first render before init guard fires) — show consent
-  }
+    if (!isOnboarded) {
+      router.replace('/onboarding' as never);
+    } else {
+      router.replace('/(tabs)/practice' as never);
+    }
+  }, [isOnboarded, isLoading]);
 
-  if (!consentShown) return <Redirect href="/consent" />;
-  if (!onboardingComplete) return <Redirect href="/onboarding" />;
-  return <Redirect href="/(tabs)" />;
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator color={colors.accent} size="large" />
+    </View>
+  );
 }

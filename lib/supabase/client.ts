@@ -1,18 +1,4 @@
-/**
- * Supabase client — lazy initialized after MMKV storage is ready.
- *
- * Auth sessions are persisted to MMKV (encrypted) rather than AsyncStorage.
- * This means sessions survive app restarts and are protected at rest.
- *
- * Initialization order enforced by _layout.tsx:
- *   initializeStorage() → initializeSupabase() → getDatabase()
- *
- * Usage:
- *   import { getSupabase } from '@/lib/supabase/client';
- *   const { data, error } = await getSupabase().auth.signInWithPassword(...)
- */
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
 import { Storage } from '@/lib/storage/mmkv';
 import type { Database } from './types';
 
@@ -21,11 +7,6 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 let _client: SupabaseClient<Database> | null = null;
 
-/**
- * MMKV-backed storage adapter for Supabase auth session persistence.
- * Supabase stores the session JWT under its own internal key.
- * We proxy reads/writes through encrypted MMKV.
- */
 const mmkvStorageAdapter = {
   getItem: (key: string): string | null => {
     try {
@@ -46,17 +27,12 @@ const mmkvStorageAdapter = {
   },
 };
 
-/**
- * Initializes the Supabase client. Must be called after initializeStorage().
- * Idempotent — safe to call multiple times.
- */
 export function initializeSupabase(): void {
   if (_client) return;
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.error(
-      '[Supabase] Missing environment variables. ' +
-      'Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in .env'
+      '[Supabase] Missing env vars. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env'
     );
     return;
   }
@@ -71,15 +47,13 @@ export function initializeSupabase(): void {
   });
 }
 
-/**
- * Returns the initialized Supabase client.
- * Throws if called before initializeSupabase().
- */
 export function getSupabase(): SupabaseClient<Database> {
   if (!_client) {
-    throw new Error(
-      'Supabase client not initialized. Ensure initializeSupabase() has been called in _layout.tsx.'
-    );
+    throw new Error('Supabase not initialized. Call initializeSupabase() first.');
   }
+  return _client;
+}
+
+export function getSupabaseSafe(): SupabaseClient<Database> | null {
   return _client;
 }

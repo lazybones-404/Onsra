@@ -3,7 +3,6 @@ import type { InstrumentId } from './instruments';
 export interface StringNote {
   note: string;
   octave: number;
-  /** Open string frequency in Hz */
   hz: number;
 }
 
@@ -183,29 +182,35 @@ export const TUNINGS: Tuning[] = [
       note('Gb', 2, 92.5),
     ],
   },
-  // ─── Vocalist (reference pitches) ─────────────────────────────
+  // ─── Violin ───────────────────────────────────────────────────
   {
-    id: 'vocal-reference',
-    name: 'Vocal Reference (A=440)',
-    instruments: ['vocalist'],
+    id: 'violin-standard',
+    name: 'Standard (GDAE)',
+    instruments: ['violinist'],
     strings: [
-      note('C', 3, 130.81),
-      note('D', 3, 146.83),
-      note('E', 3, 164.81),
-      note('F', 3, 174.61),
       note('G', 3, 196.0),
-      note('A', 3, 220.0),
+      note('D', 4, 293.66),
+      note('A', 4, 440.0),
+      note('E', 5, 659.25),
     ],
   },
-  // ─── Ukulele (for songwriters) ─────────────────────────────────
   {
-    id: 'ukulele-standard',
-    name: 'Ukulele Standard (GCEA)',
-    instruments: ['songwriter'],
+    id: 'violin-scordatura-d',
+    name: 'Scordatura (GDAd)',
+    instruments: ['violinist'],
     strings: [
-      note('G', 4, 392.0),
-      note('C', 4, 261.63),
-      note('E', 4, 329.63),
+      note('G', 3, 196.0),
+      note('D', 4, 293.66),
+      note('A', 4, 440.0),
+      note('D', 5, 587.33),
+    ],
+  },
+  // ─── Keys (reference pitches) ─────────────────────────────────
+  {
+    id: 'keys-concert-a',
+    name: 'Concert A = 440 Hz',
+    instruments: ['keys'],
+    strings: [
       note('A', 4, 440.0),
     ],
   },

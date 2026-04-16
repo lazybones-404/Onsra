@@ -47,7 +47,7 @@ export function detectPitch(
   let runningSum = 0;
   for (let tau = 1; tau < halfLen; tau++) {
     runningSum += yinBuffer[tau];
-    yinBuffer[tau] = yinBuffer[tau] * tau / runningSum;
+    yinBuffer[tau] = (yinBuffer[tau] * tau) / runningSum;
   }
 
   // Step 4: Absolute threshold — find first dip below threshold
@@ -55,7 +55,6 @@ export function detectPitch(
   let found = false;
   while (tau < halfLen - 1) {
     if (yinBuffer[tau] < threshold) {
-      // Move to local minimum
       while (tau + 1 < halfLen && yinBuffer[tau + 1] < yinBuffer[tau]) {
         tau++;
       }
@@ -89,7 +88,6 @@ function parabolicInterpolation(buf: Float32Array, tau: number, len: number): nu
 // ─── Frequency → Note conversion ─────────────────────────────────────────────
 
 export function frequencyToNote(frequency: number, referencePitch = 440): NoteResult {
-  // MIDI note 69 = A4 = 440 Hz
   const midiNote = 12 * Math.log2(frequency / referencePitch) + 69;
   const rounded = Math.round(midiNote);
   const cents = Math.round((midiNote - rounded) * 100);
@@ -106,20 +104,14 @@ export function frequencyToNote(frequency: number, referencePitch = 440): NoteRe
 
 // ─── WAV PCM decoder (for expo-av recording output) ──────────────────────────
 
-/**
- * Decodes a WAV ArrayBuffer into a normalised Float32Array of mono samples.
- * Handles 16-bit PCM WAV files produced by expo-av.
- */
 export function decodeWAVtoPCM(buffer: ArrayBuffer): Float32Array | null {
   try {
     const view = new DataView(buffer);
     if (buffer.byteLength < 44) return null;
 
-    // Parse standard WAV header
     const numChannels = view.getUint16(22, true);
     const bitDepth = view.getUint16(34, true);
 
-    // Locate the 'data' chunk (may not always start at offset 44)
     let offset = 12;
     while (offset + 8 < buffer.byteLength) {
       const id = String.fromCharCode(

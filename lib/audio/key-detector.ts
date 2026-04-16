@@ -1,151 +1,112 @@
 /**
- * Key detection — Krumhansl-Schmuckler algorithm.
+ * Key detector — accumulates detected notes over a session and estimates
+ * the most likely musical key using the Krumhansl-Schmuckler key-finding algorithm.
  *
- * Accumulates a chroma profile (12-element vector of pitch class energy)
- * from detected frequencies, then correlates it against Krumhansl's
- * major and minor key profiles to find the best matching key.
+ * This is a statistical approach: the longer you play, the more accurate it gets.
  */
 
-export type KeyMode = 'major' | 'minor';
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// Krumhansl-Kessler key profiles
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
 export interface KeyResult {
-  root: string;
-  mode: KeyMode;
+  key: string;
+  mode: 'major' | 'minor';
   confidence: number;
-  /** Scale notes for the detected key */
-  scaleNotes: string[];
+  diatonicNotes: string[];
+  diatonicChords: string[];
 }
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
+function correlation(a: number[], b: number[]): number {
+  const n = a.length;
+  const meanA = a.reduce((s, v) => s + v, 0) / n;
+  const meanB = b.reduce((s, v) => s + v, 0) / n;
+  let num = 0, denA = 0, denB = 0;
+  for (let i = 0; i < n; i++) {
+    num += (a[i] - meanA) * (b[i] - meanB);
+    denA += (a[i] - meanA) ** 2;
+    denB += (b[i] - meanB) ** 2;
+  }
+  return num / Math.sqrt(denA * denB) || 0;
+}
 
-// Krumhansl-Schmuckler key profiles (major and minor)
-const KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-const KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+function rotate<T>(arr: T[], n: number): T[] {
+  return [...arr.slice(n), ...arr.slice(0, n)];
+}
 
-// Major scale intervals (semitones)
-const MAJOR_INTERVALS = [0, 2, 4, 5, 7, 9, 11];
-// Natural minor scale intervals
-const MINOR_INTERVALS = [0, 2, 3, 5, 7, 8, 10];
+const DIATONIC_INTERVALS = {
+  major: [0, 2, 4, 5, 7, 9, 11],
+  minor: [0, 2, 3, 5, 7, 8, 10],
+};
+
+const MAJOR_CHORD_QUALITIES = ['maj', 'min', 'min', 'maj', 'maj', 'min', 'dim'];
+const MINOR_CHORD_QUALITIES = ['min', 'dim', 'maj', 'min', 'min', 'maj', 'maj'];
 
 export class KeyDetector {
-  /** Chroma energy accumulator — one bucket per pitch class (C=0 … B=11) */
-  private chroma = new Float32Array(12);
-  private totalEnergy = 0;
+  private noteCounts: number[] = new Array(12).fill(0);
+  private totalNotes = 0;
 
-  /** Feed a detected frequency into the chroma accumulator. */
-  addFrequency(hz: number, weight = 1.0): void {
-    if (hz <= 0) return;
-    const pitchClass = frequencyToPitchClass(hz);
-    this.chroma[pitchClass] += weight;
-    this.totalEnergy += weight;
+  addNote(noteName: string): void {
+    const idx = NOTE_NAMES.indexOf(noteName);
+    if (idx >= 0) {
+      this.noteCounts[idx]++;
+      this.totalNotes++;
+    }
   }
 
-  /** Detect the current key from accumulated chroma data. */
   detect(): KeyResult | null {
-    if (this.totalEnergy < 10) return null;
+    if (this.totalNotes < 8) return null;
 
+    let bestKey = '';
+    let bestMode: 'major' | 'minor' = 'major';
     let bestCorr = -Infinity;
-    let bestRoot = 0;
-    let bestMode: KeyMode = 'major';
 
     for (let root = 0; root < 12; root++) {
-      const majorCorr = correlate(this.chroma, KS_MAJOR, root);
-      const minorCorr = correlate(this.chroma, KS_MINOR, root);
+      const rotatedCounts = rotate(this.noteCounts, root);
+
+      const majorCorr = correlation(rotatedCounts, MAJOR_PROFILE);
+      const minorCorr = correlation(rotatedCounts, MINOR_PROFILE);
 
       if (majorCorr > bestCorr) {
         bestCorr = majorCorr;
-        bestRoot = root;
+        bestKey = NOTE_NAMES[root];
         bestMode = 'major';
       }
       if (minorCorr > bestCorr) {
         bestCorr = minorCorr;
-        bestRoot = root;
+        bestKey = NOTE_NAMES[root];
         bestMode = 'minor';
       }
     }
 
-    const scaleIntervals = bestMode === 'major' ? MAJOR_INTERVALS : MINOR_INTERVALS;
-    const scaleNotes = scaleIntervals.map((i) => NOTE_NAMES[(bestRoot + i) % 12]);
+    if (!bestKey) return null;
+
+    const rootIdx = NOTE_NAMES.indexOf(bestKey);
+    const intervals = DIATONIC_INTERVALS[bestMode];
+    const qualities = bestMode === 'major' ? MAJOR_CHORD_QUALITIES : MINOR_CHORD_QUALITIES;
+
+    const diatonicNotes = intervals.map((i) => NOTE_NAMES[(rootIdx + i) % 12]);
+    const diatonicChords = diatonicNotes.map((note, i) => {
+      const q = qualities[i];
+      return q === 'maj' ? note : q === 'min' ? `${note}m` : `${note}°`;
+    });
+
+    const maxCorr = 1;
+    const confidence = Math.max(0, Math.min(1, (bestCorr + 1) / 2));
 
     return {
-      root: NOTE_NAMES[bestRoot],
+      key: bestKey,
       mode: bestMode,
-      confidence: Math.min(1, Math.max(0, (bestCorr + 1) / 2)),
-      scaleNotes,
+      confidence,
+      diatonicNotes,
+      diatonicChords,
     };
   }
 
   reset(): void {
-    this.chroma.fill(0);
-    this.totalEnergy = 0;
+    this.noteCounts = new Array(12).fill(0);
+    this.totalNotes = 0;
   }
-}
-
-// ─── Chord suggestions ────────────────────────────────────────────────────────
-
-export interface ChordSuggestion {
-  degree: string;
-  chord: string;
-  function: string;
-}
-
-export function getDiatonicChords(root: string, mode: KeyMode): ChordSuggestion[] {
-  const rootIdx = NOTE_NAMES.indexOf(root as typeof NOTE_NAMES[number]);
-  if (rootIdx === -1) return [];
-
-  if (mode === 'major') {
-    const degrees = [
-      { semis: 0, quality: 'maj', degree: 'I', function: 'Tonic' },
-      { semis: 2, quality: 'min', degree: 'ii', function: 'Supertonic' },
-      { semis: 4, quality: 'min', degree: 'iii', function: 'Mediant' },
-      { semis: 5, quality: 'maj', degree: 'IV', function: 'Subdominant' },
-      { semis: 7, quality: 'maj', degree: 'V', function: 'Dominant' },
-      { semis: 9, quality: 'min', degree: 'vi', function: 'Submediant' },
-      { semis: 11, quality: 'dim', degree: 'vii°', function: 'Leading tone' },
-    ];
-    return degrees.map((d) => ({
-      degree: d.degree,
-      chord: `${NOTE_NAMES[(rootIdx + d.semis) % 12]}${d.quality === 'min' ? 'm' : d.quality === 'dim' ? 'dim' : ''}`,
-      function: d.function,
-    }));
-  } else {
-    const degrees = [
-      { semis: 0, quality: 'min', degree: 'i', function: 'Tonic' },
-      { semis: 2, quality: 'dim', degree: 'ii°', function: 'Supertonic' },
-      { semis: 3, quality: 'maj', degree: 'III', function: 'Mediant' },
-      { semis: 5, quality: 'min', degree: 'iv', function: 'Subdominant' },
-      { semis: 7, quality: 'min', degree: 'v', function: 'Dominant' },
-      { semis: 8, quality: 'maj', degree: 'VI', function: 'Submediant' },
-      { semis: 10, quality: 'maj', degree: 'VII', function: 'Subtonic' },
-    ];
-    return degrees.map((d) => ({
-      degree: d.degree,
-      chord: `${NOTE_NAMES[(rootIdx + d.semis) % 12]}${d.quality === 'min' ? 'm' : d.quality === 'dim' ? 'dim' : ''}`,
-      function: d.function,
-    }));
-  }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function frequencyToPitchClass(hz: number): number {
-  const midi = Math.round(12 * Math.log2(hz / 440) + 69);
-  return ((midi % 12) + 12) % 12;
-}
-
-function correlate(chroma: Float32Array, profile: number[], root: number): number {
-  const n = 12;
-  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-  for (let i = 0; i < n; i++) {
-    const x = chroma[(i + root) % n];
-    const y = profile[i];
-    sumX += x;
-    sumY += y;
-    sumXY += x * y;
-    sumX2 += x * x;
-    sumY2 += y * y;
-  }
-  const num = n * sumXY - sumX * sumY;
-  const den = Math.sqrt((n * sumX2 - sumX ** 2) * (n * sumY2 - sumY ** 2));
-  return den === 0 ? 0 : num / den;
 }

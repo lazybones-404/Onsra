@@ -1,116 +1,74 @@
 /**
- * Analytics — lightweight Mixpanel HTTP API wrapper.
+ * Analytics — Mixpanel event tracking.
  *
- * Uses Mixpanel's REST ingestion endpoint so no native module is required.
- * All tracking is gated on the user's ANALYTICS_OPT_IN preference and silently
- * no-ops if the token is absent or the network call fails.
- *
- * Usage:
- *   Analytics.track(EVENTS.ONBOARDING_COMPLETE, { instrument: 'guitar' });
- *   Analytics.setUser('user-uuid');
- *   Analytics.optIn(); // call after consent screen confirmation
+ * Privacy-first: events are only sent if the user has opted in.
+ * No PII is tracked. Events capture feature usage for product decisions.
  */
+
+import { Mixpanel } from 'mixpanel-react-native';
 import { Storage, STORAGE_KEYS } from '@/lib/storage/mmkv';
 
-const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN;
-const MIXPANEL_URL = 'https://api.mixpanel.com/track';
+const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN ?? '';
 
-let _distinctId: string = 'anonymous';
+const mixpanel = new Mixpanel(MIXPANEL_TOKEN, /* trackAutomaticEvents */ false);
 
-// ─── Typed event catalogue ─────────────────────────────────────────────────
+export async function initializeMixpanel(): Promise<void> {
+  if (!MIXPANEL_TOKEN) return;
+  try {
+    await mixpanel.init();
+  } catch {}
+}
 
+// Event names
 export const EVENTS = {
+  // Practice
+  TUNER_SESSION_START: 'tuner_session_start',
+  CHORD_IDENTIFIED: 'chord_identified',
+  SIGNAL_CHAIN_MESSAGE: 'signal_chain_message',
+  METRONOME_START: 'metronome_start',
+  DRUM_TUNER_AI_REQUEST: 'drum_tuner_ai_request',
+  PITCH_DISPLAY_SESSION: 'pitch_display_session',
+
+  // GigList
+  SETLIST_CREATED: 'setlist_created',
+  SONG_CREATED: 'song_created',
+  CHORD_CHART_GENERATED: 'chord_chart_generated',
+  COLLAB_SESSION_START: 'collab_session_start',
+  SETLIST_TIMER_STARTED: 'setlist_timer_started',
+  TRANSPOSE_USED: 'transpose_used',
+
+  // Auth
+  SIGNUP: 'signup',
+  LOGIN: 'login',
+
   // Onboarding
-  CONSENT_SHOWN: 'consent_screen_shown',
-  CONSENT_OPT_IN: 'consent_opted_in',
-  CONSENT_OPT_OUT: 'consent_opted_out',
   INSTRUMENT_SELECTED: 'instrument_selected',
   ONBOARDING_COMPLETE: 'onboarding_complete',
-  // Auth
-  AUTH_SCREEN_VIEWED: 'auth_screen_viewed',
-  SIGN_UP_STARTED: 'sign_up_started',
-  SIGN_UP_COMPLETED: 'sign_up_completed',
-  SIGN_IN_COMPLETED: 'sign_in_completed',
-  SIGN_OUT: 'signed_out',
-  // Core features (wired in Phase 2+)
-  TUNER_OPENED: 'tuner_opened',
-  METRONOME_STARTED: 'metronome_started',
-  TONE_QUERY_SENT: 'tone_query_sent',
-  SONG_SAVED: 'song_saved',
-  SETLIST_CREATED: 'setlist_created',
-  PRACTICE_LOGGED: 'practice_logged',
-  EXPORT_INITIATED: 'export_initiated',
-  // Session
-  SESSION_START: 'session_start',
 } as const;
 
-export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
+type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
-// ─── Public API ────────────────────────────────────────────────────────────
+function isOptedIn(): boolean {
+  return Storage.getBoolean(STORAGE_KEYS.ANALYTICS_OPT_IN);
+}
 
-export const Analytics = {
-  /** Call after sign in / sign up so subsequent events are tied to the user. */
-  setUser(userId: string): void {
-    _distinctId = userId;
-  },
-
-  /** Reset to anonymous on sign out. */
-  resetUser(): void {
-    _distinctId = 'anonymous';
-  },
-
-  /** Fire a single event. Silently skips if opted out or token missing. */
-  async track(event: EventName, properties?: Record<string, unknown>): Promise<void> {
-    if (!MIXPANEL_TOKEN) return;
-
-    try {
-      if (!Storage.getBoolean(STORAGE_KEYS.ANALYTICS_OPT_IN)) return;
-    } catch {
-      return; // MMKV not yet ready
+export function track(event: EventName, properties?: Record<string, unknown>): void {
+  if (!isOptedIn()) return;
+  try {
+    if (__DEV__) {
+      console.log('[Analytics]', event, properties);
+      return;
     }
+    mixpanel.track(event, properties as Record<string, string> | undefined);
+  } catch {}
+}
 
-    try {
-      const payload = [
-        {
-          event,
-          properties: {
-            token: MIXPANEL_TOKEN,
-            distinct_id: _distinctId,
-            time: Math.floor(Date.now() / 1000),
-            ...properties,
-          },
-        },
-      ];
-
-      await fetch(MIXPANEL_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      // Never throw — analytics must not break the app
+export function setUser(userId: string, traits?: Record<string, unknown>): void {
+  if (!isOptedIn()) return;
+  try {
+    mixpanel.identify(userId);
+    if (traits) {
+      mixpanel.getPeople().set(traits as Record<string, string>);
     }
-  },
-
-  /** Persist opt-in and update the MMKV flag. */
-  optIn(): void {
-    try {
-      Storage.setBoolean(STORAGE_KEYS.ANALYTICS_OPT_IN, true);
-    } catch {}
-  },
-
-  /** Persist opt-out and update the MMKV flag. */
-  optOut(): void {
-    try {
-      Storage.setBoolean(STORAGE_KEYS.ANALYTICS_OPT_IN, false);
-    } catch {}
-  },
-
-  isOptedIn(): boolean {
-    try {
-      return Storage.getBoolean(STORAGE_KEYS.ANALYTICS_OPT_IN);
-    } catch {
-      return false;
-    }
-  },
-};
+  } catch {}
+}

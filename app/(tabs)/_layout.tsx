@@ -1,74 +1,65 @@
-import { Tabs } from 'expo-router';
-
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useEffect } from 'react';
+import { Tabs, useSegments } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import { micManager } from '@/lib/audio/mic-manager';
+import { colors } from '@/constants/theme';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme() ?? 'dark';
-  const C = Colors[colorScheme];
+  const segments = useSegments();
+
+  useEffect(() => {
+    const isPractice = segments.some((s) => s === 'practice');
+    if (isPractice) {
+      micManager.start();
+    } else {
+      micManager.stop();
+    }
+  }, [segments]);
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: C.tabIconSelected,
-        tabBarInactiveTintColor: C.tabIconDefault,
         tabBarStyle: {
-          backgroundColor: C.surface,
-          borderTopColor: C.border,
+          backgroundColor: colors.background,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 6,
         },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.mutedDark,
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '600',
         },
-        tabBarButton: HapticTab,
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="practice"
         options={{
-          title: 'Tune',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="tuningfork" color={color} />
+          title: 'Practice',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="mic" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="key"
+        name="giglist"
         options={{
-          title: 'Key & Pitch',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="waveform" color={color} />
+          title: 'GigList',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="queue-music" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="tone"
+        name="settings"
         options={{
-          title: 'Tone',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="slider.horizontal.3" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="compose"
-        options={{
-          title: 'Compose',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="pencil.and.outline" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{
-          title: 'More',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="ellipsis" color={color} />
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="settings" size={size} color={color} />
           ),
         }}
       />

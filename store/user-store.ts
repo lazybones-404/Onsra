@@ -1,47 +1,52 @@
-/**
- * User store — account details and sync status.
- * Populated on login via Supabase Auth.
- * When null, the app is running in guest/offline mode.
- */
 import { create } from 'zustand';
-import { InstrumentId } from '@/constants/instruments';
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  displayName: string | null;
-  analyticsOptIn: boolean;
-  /** Matches the `instrument` column in Supabase `users` table. Synced from local MMKV on signup. */
-  instrument: InstrumentId;
-}
-
-type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
+import { Storage, STORAGE_KEYS } from '@/lib/storage/mmkv';
+import { DEFAULT_INSTRUMENT, type InstrumentId } from '@/constants/instruments';
 
 interface UserState {
-  user: UserProfile | null;
-  syncStatus: SyncStatus;
-  lastSyncedAt: string | null;
-  /** Compressed tone memory summary from Supabase (updated after each AI session) */
-  toneMemorySummary: string | null;
+  isOnboarded: boolean;
+  primaryInstrument: InstrumentId;
+  instruments: InstrumentId[];
 
-  // ─── Actions ──────────────────────────────────────────────────
-  setUser: (user: UserProfile | null) => void;
-  setSyncStatus: (status: SyncStatus) => void;
-  setLastSyncedAt: (iso: string) => void;
-  setToneMemorySummary: (summary: string) => void;
-  signOut: () => void;
+  setOnboarded: (value: boolean) => void;
+  setPrimaryInstrument: (instrument: InstrumentId) => void;
+  setInstruments: (instruments: InstrumentId[]) => void;
+  loadFromStorage: () => void;
 }
 
 export const useUserStore = create<UserState>((set) => ({
-  user: null,
-  syncStatus: 'idle',
-  lastSyncedAt: null,
-  toneMemorySummary: null,
+  isOnboarded: false,
+  primaryInstrument: DEFAULT_INSTRUMENT,
+  instruments: [DEFAULT_INSTRUMENT],
 
-  setUser: (user) => set({ user }),
-  setSyncStatus: (status) => set({ syncStatus: status }),
-  setLastSyncedAt: (iso) => set({ lastSyncedAt: iso }),
-  setToneMemorySummary: (summary) => set({ toneMemorySummary: summary }),
-  signOut: () =>
-    set({ user: null, syncStatus: 'idle', lastSyncedAt: null, toneMemorySummary: null }),
+  setOnboarded: (value) => {
+    Storage.setBoolean(STORAGE_KEYS.ONBOARDING_COMPLETE, value);
+    set({ isOnboarded: value });
+  },
+
+  setPrimaryInstrument: (instrument) => {
+    Storage.setString(STORAGE_KEYS.PRIMARY_INSTRUMENT, instrument);
+    set({ primaryInstrument: instrument });
+  },
+
+  setInstruments: (instruments) => {
+    Storage.setString(STORAGE_KEYS.INSTRUMENTS, JSON.stringify(instruments));
+    set({ instruments });
+  },
+
+  loadFromStorage: () => {
+    const onboarded = Storage.getBoolean(STORAGE_KEYS.ONBOARDING_COMPLETE);
+    const primaryRaw = Storage.getString(STORAGE_KEYS.PRIMARY_INSTRUMENT);
+    const instrumentsRaw = Storage.getString(STORAGE_KEYS.INSTRUMENTS);
+
+    const primaryInstrument = (primaryRaw as InstrumentId) ?? DEFAULT_INSTRUMENT;
+    let instruments: InstrumentId[] = [primaryInstrument];
+
+    try {
+      if (instrumentsRaw) {
+        instruments = JSON.parse(instrumentsRaw) as InstrumentId[];
+      }
+    } catch {}
+
+    set({ isOnboarded: onboarded, primaryInstrument, instruments });
+  },
 }));

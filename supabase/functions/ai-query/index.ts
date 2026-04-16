@@ -4,64 +4,62 @@
  * Secure proxy between the app and Google Gemini.
  * The Gemini API key NEVER leaves this function environment.
  *
- * Required secrets (set in Supabase Dashboard → Edge Functions → Secrets):
- *   GEMINI_API_KEY            — from aistudio.google.com/apikey (free tier)
+ * Required secrets:
+ *   GEMINI_API_KEY            — from aistudio.google.com/apikey
  *   SUPABASE_SERVICE_ROLE_KEY — auto-injected by Supabase
  *
  * Request body:
  *   {
  *     message: string,
- *     feature: 'tone-advisor' | 'troubleshooter' | 'lyric-assistant' |
- *              'chord-suggestions' | 'tempo-reference' | 'artwork-checker',
+ *     feature: Feature,
+ *     context?: Record<string, unknown>,
  *     conversationHistory?: { role: 'user' | 'assistant', content: string }[]
  *   }
  *
  * Response: Server-Sent Events stream
- *   data: {"text":"..."}\n\n   (token chunks)
- *   data: [DONE]\n\n           (end of stream)
+ *   data: {"text":"..."}\n\n
+ *   data: [DONE]\n\n
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.21.0';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type Feature =
   | 'tone-advisor'
   | 'troubleshooter'
-  | 'lyric-assistant'
+  | 'signal-chain'
+  | 'lyric-chord-assist'
   | 'chord-suggestions'
+  | 'drum-tuner-guide'
   | 'tempo-reference'
   | 'artwork-checker';
 
 interface RequestBody {
   message: string;
   feature: Feature;
+  context?: Record<string, unknown>;
   conversationHistory?: { role: 'user' | 'assistant'; content: string }[];
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Gemini uses maxOutputTokens — keep values consistent with original limits
 const MAX_OUTPUT_TOKENS_PER_FEATURE: Record<Feature, number> = {
   'tone-advisor': 400,
   'troubleshooter': 500,
-  'lyric-assistant': 300,
-  'chord-suggestions': 150,
+  'signal-chain': 600,
+  'lyric-chord-assist': 800,
+  'chord-suggestions': 300,
+  'drum-tuner-guide': 500,
   'tempo-reference': 200,
   'artwork-checker': 300,
 };
 
-const DAILY_REQUEST_LIMIT = 50;
+const DAILY_REQUEST_LIMIT = 75;
 const MAX_HISTORY_TURNS = 10;
-const MAX_MESSAGE_LENGTH = 2000;
-
-// ─── Main handler ─────────────────────────────────────────────────────────────
+const MAX_MESSAGE_LENGTH = 3000;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
@@ -69,9 +67,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    // ── 1. Parse and validate request body ──────────────────────────────────
     const body: RequestBody = await req.json();
-    const { message, feature, conversationHistory = [] } = body;
+    const { message, feature, context = {}, conversationHistory = [] } = body;
 
     if (!message || typeof message !== 'string') {
       return errorResponse('message is required', 400);
@@ -80,11 +77,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return errorResponse('invalid feature', 400);
     }
 
-    // ── 2. Verify user JWT ───────────────────────────────────────────────────
+    // ── Auth ─────────────────────────────────────────────────────────────────
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return errorResponse('Unauthorized', 401);
-    }
+    if (!authHeader) return errorResponse('Unauthorized', 401);
 
     const supabaseUser = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -93,11 +88,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
 
     const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
-    if (authError || !user) {
-      return errorResponse('Unauthorized', 401);
-    }
+    if (authError || !user) return errorResponse('Unauthorized', 401);
 
-    // ── 3. Rate limiting: max 50 AI requests per user per day ───────────────
+    // ── Rate limiting ────────────────────────────────────────────────────────
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -115,24 +108,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({
           error: 'daily_limit_reached',
-          message: "You've reached today's AI limit (50 requests). Come back tomorrow!",
+          message: "You've reached today's AI limit. Come back tomorrow!",
         }),
         { status: 429, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ── 4. Fetch user's tone memory ──────────────────────────────────────────
-    const { data: toneMemory } = await supabaseAdmin
-      .from('ai_tone_memory')
-      .select('instrument, amp_model, preferences_json, rejections_json')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // ── Tone memory (for tone-advisor & signal-chain) ────────────────────────
+    let toneMemory: Record<string, unknown> | null = null;
+    if (feature === 'tone-advisor' || feature === 'signal-chain') {
+      const { data } = await supabaseAdmin
+        .from('ai_tone_memory')
+        .select('instrument, amp_model, preferences_json, rejections_json')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      toneMemory = data;
+    }
 
-    // ── 5. Build Gemini request ──────────────────────────────────────────────
+    // ── Build Gemini request ──────────────────────────────────────────────────
     const sanitizedMessage = sanitizeInput(message);
-    const systemPrompt = buildSystemPrompt(feature, toneMemory);
+    const systemPrompt = buildSystemPrompt(feature, context, toneMemory);
 
-    // Gemini uses 'model' for the assistant role (not 'assistant')
     const history = conversationHistory
       .slice(-MAX_HISTORY_TURNS)
       .map((msg) => ({
@@ -146,20 +142,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
       systemInstruction: systemPrompt,
       generationConfig: {
         maxOutputTokens: MAX_OUTPUT_TOKENS_PER_FEATURE[feature],
-        temperature: 0.7,
+        temperature: feature === 'lyric-chord-assist' ? 0.3 : 0.7,
       },
     });
 
     const chat = model.startChat({ history });
 
-    // ── 6. Log analytics event ───────────────────────────────────────────────
+    // ── Log analytics ─────────────────────────────────────────────────────────
     await supabaseAdmin.from('analytics_events').insert({
       user_id: user.id,
       event_name: 'ai_query',
       properties_json: { feature },
     });
 
-    // ── 7. Stream Gemini response back to client ─────────────────────────────
+    // ── Stream response ───────────────────────────────────────────────────────
     const encoder = new TextEncoder();
 
     const readable = new ReadableStream({
@@ -178,15 +174,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
             }
           }
 
-          // Update tone memory after tone advisor sessions
-          if (feature === 'tone-advisor' && fullResponseText) {
-            await updateToneMemory(
-              supabaseAdmin,
-              user.id,
-              sanitizedMessage,
-              fullResponseText,
-              toneMemory
-            );
+          if (feature === 'tone-advisor' || feature === 'signal-chain') {
+            await updateToneMemory(supabaseAdmin, user.id, sanitizedMessage, toneMemory);
           }
 
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -215,8 +204,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function errorResponse(message: string, status: number): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -233,23 +220,39 @@ function sanitizeInput(input: string): string {
     .slice(0, MAX_MESSAGE_LENGTH);
 }
 
-function buildSystemPrompt(feature: Feature, toneMemory: Record<string, unknown> | null): string {
-  const memoryContext = toneMemory
-    ? `\n\nUser's saved tone context:\n- Instrument: ${toneMemory.instrument}\n- Amp: ${toneMemory.amp_model ?? 'not specified'}\n- Past preferences: ${JSON.stringify(toneMemory.preferences_json)}\n- Rejected settings: ${JSON.stringify(toneMemory.rejections_json)}`
+function buildSystemPrompt(
+  feature: Feature,
+  context: Record<string, unknown>,
+  toneMemory: Record<string, unknown> | null
+): string {
+  const memoryCtx = toneMemory
+    ? `\n\nUser's tone memory:\n- Instrument: ${toneMemory.instrument}\n- Amp: ${toneMemory.amp_model ?? 'not set'}\n- Preferences: ${JSON.stringify(toneMemory.preferences_json)}\n- Rejections: ${JSON.stringify(toneMemory.rejections_json)}`
     : '';
 
   const prompts: Record<Feature, string> = {
-    'tone-advisor': `You are an expert amp and tone advisor for musicians. You give specific, actionable settings for physical amps and pedals — never generic. You are instrument-aware: guitar, bass, and keys have different amp types, pedal chains, and terminology. When given an amp model, calibrate all settings to that amp's actual controls and character. Output settings as specific knob positions (e.g. "Gain: 6/10, Bass: 5/10") when possible. Build on previous context — adjust iteratively, don't start from scratch.${memoryContext}`,
+    'tone-advisor': `You are an expert amp and tone advisor. Give specific, actionable settings for physical amps and pedals — never generic. Output knob positions numerically (e.g. "Gain: 6/10"). Build on previous context iteratively.${memoryCtx}`,
 
-    'troubleshooter': `You are an expert instrument technician and gear troubleshooter. Diagnose problems with instruments, amps, cables, and effects through systematic follow-up questions. You have current knowledge of drivers, firmware, and gear. Ask one targeted follow-up question at a time to narrow down the issue, then give step-by-step fixes in plain language. Cover tuning problems, noise issues, signal chain problems, and anything a working musician encounters.`,
+    'troubleshooter': `You are an expert instrument technician and gear troubleshooter. Diagnose problems systematically. Ask ONE targeted follow-up question at a time to narrow the issue, then give step-by-step fixes. Cover noise, tuning issues, signal chain problems, and hardware faults.`,
 
-    'lyric-assistant': `You are a lyric co-writer. Mirror the user's established style, rhyme scheme, syllable count, and emotional tone exactly. You ONLY suggest — you never overwrite. When the user shares lyrics, offer a chorus, next verse, or bridge continuation in the same voice. Keep suggestions concise and musical. Label your output clearly: "Chorus suggestion:", "Bridge option:", etc.`,
+    'signal-chain': `You are an expert signal chain advisor for musicians. Help the user design, troubleshoot, and optimise their signal chain — from instrument to amp or DAW. Cover pedal ordering, gain staging, impedance, noise floor, and cable quality. Be specific to their gear.${memoryCtx}`,
 
-    'chord-suggestions': `You are a music theory expert and composer. Suggest chord progressions that go beyond the obvious I-IV-V based on the key, mood, and genre provided. Include borrowed chords, modal interchange, and secondary dominants where appropriate. Return progressions as arrays of chord names (e.g. ["Cmaj7", "Am7", "Fmaj7", "G7sus4"]) with a brief description of the feel and why it works. Give 3 distinct options.`,
+    'lyric-chord-assist': `You are a chord placement expert. The user will give you lyrics. Your job is to suggest where chords should be placed above the lyrics in the style of Ultimate Guitar. Return JSON in this exact format:
+{
+  "chart": [
+    { "word": "word", "chord": "Am" | null, "lineBreak": false | true }
+  ],
+  "key": "Am",
+  "summary": "brief description of the progression"
+}
+Place chords at natural beat/bar positions. Mark the start of each new line with lineBreak: true. Use standard chord names (Am, C, G, F, Em7, etc.). Context: ${JSON.stringify(context)}`,
 
-    'tempo-reference': `You are a drummer's coach and groove expert. Interpret groove descriptions in plain, conversational language and return: exact BPM range, feel description (e.g. "tight and driving" vs "loose and behind the beat"), straight vs swung subdivision, and 3-5 specific reference tracks with artist and song name to study. Be precise — drummers understand fine nuance in feel.`,
+    'chord-suggestions': `You are a music theory expert. Suggest chord progressions for the given key, genre, and mood. Go beyond I-IV-V — include borrowed chords, modal interchange, secondary dominants. Return 3 distinct progressions as: [{ "progression": ["Am", "F", "C", "G"], "feel": "melancholic", "description": "..." }]. Context: ${JSON.stringify(context)}`,
 
-    'artwork-checker': `You are a music platform publishing specialist. You know the exact artwork requirements for Spotify, Apple Music, YouTube Music, SoundCloud, and Bandcamp (dimensions, file size, colour mode, format, text legibility rules). Given a description or specs of artwork, return a structured pass/fail assessment per platform with specific, actionable fixes for any failures.`,
+    'drum-tuner-guide': `You are an expert drum tuner. Given the drum specs (type, diameter, depth, head brand/type) and the measured resonant frequency from the mic, calculate the ideal tuning target frequency and provide a step-by-step tuning guide. Be specific about lug-by-lug tensioning technique. Context: ${JSON.stringify(context)}`,
+
+    'tempo-reference': `You are a groove and tempo coach. Interpret groove descriptions and return: exact BPM range, feel (tight/loose, straight/swung), and 3-5 specific reference tracks the musician should study. Be precise — musicians understand fine nuance.`,
+
+    'artwork-checker': `You are a music platform publishing specialist. Know the exact artwork requirements for Spotify, Apple Music, YouTube Music, SoundCloud, and Bandcamp (dimensions, file size, colour mode, format, text legibility). Return a structured pass/fail per platform with specific fixes.`,
   };
 
   return prompts[feature];
@@ -259,7 +262,6 @@ async function updateToneMemory(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   userMessage: string,
-  _aiResponse: string,
   existing: Record<string, unknown> | null
 ): Promise<void> {
   const preferences: Record<string, string> = (existing?.preferences_json as Record<string, string>) ?? {};
