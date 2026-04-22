@@ -15,24 +15,14 @@ const SOUND_SOURCES: Record<MetronomeSound, number | null> = {
   rimshot: null,
 };
 
-// Attempt to load sound files — fail silently, fall back to haptics
-function tryRequire(path: string): number | null {
-  try {
-    return require(path);
-  } catch {
-    return null;
-  }
-}
-
-// Initialise sound sources (called once)
-function initSources() {
-  SOUND_SOURCES.tick = tryRequire('@/assets/sounds/tick.wav');
-  SOUND_SOURCES.hihat = tryRequire('@/assets/sounds/hihat.wav');
-  SOUND_SOURCES.kick = tryRequire('@/assets/sounds/kick.wav');
-  SOUND_SOURCES.rimshot = tryRequire('@/assets/sounds/rimshot.wav');
-}
-
-initSources();
+/**
+ * NOTE:
+ * We intentionally do NOT require bundled audio assets here.
+ * Metro requires static require() calls, and missing `.wav` assets would fail bundling.
+ * For v1 builds without packaged click samples, we rely on haptics fallback.
+ *
+ * If/when you add click samples, wire them in via static `require('...')` calls.
+ */
 
 const BEATS_PER_SIG: Record<TimeSignature, number> = {
   '2/4': 2, '3/4': 3, '4/4': 4, '5/4': 5, '6/8': 6, '7/8': 7,
@@ -53,6 +43,9 @@ class MetronomeEngine {
     const source = SOUND_SOURCES[sound];
     if (!source) {
       this.audioAvailable = false;
+      // #region agent log
+      fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'E',location:'lib/audio/metronome-engine.ts:loadSound',message:'Metronome sound missing, haptics fallback',data:{sound},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return;
     }
 
@@ -73,6 +66,9 @@ class MetronomeEngine {
       });
       this.clickSound = s;
       this.audioAvailable = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'E',location:'lib/audio/metronome-engine.ts:loadSound',message:'Metronome sound loaded',data:{sound},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } catch {
       this.audioAvailable = false;
     }
@@ -81,6 +77,9 @@ class MetronomeEngine {
   async start(bpm: number, timeSignature: TimeSignature, sound: MetronomeSound): Promise<void> {
     this.stop();
     await this.loadSound(sound);
+    // #region agent log
+    fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'E',location:'lib/audio/metronome-engine.ts:start',message:'Metronome start',data:{bpm,timeSignature,sound,audioAvailable:this.audioAvailable},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     const beatsInSig = BEATS_PER_SIG[timeSignature] ?? 4;
     const intervalMs = (60 / bpm) * 1000;
