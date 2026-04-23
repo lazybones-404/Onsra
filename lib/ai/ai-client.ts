@@ -32,8 +32,15 @@ export async function* streamAiResponse(
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
+    // #region agent log
+    fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'F',location:'lib/ai/ai-client.ts:streamAiResponse',message:'AI call blocked: no session',data:{feature},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     throw new Error('Not authenticated');
   }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'F',location:'lib/ai/ai-client.ts:streamAiResponse',message:'AI request start',data:{feature,messageLen:message.length,hasContext:!!context,historyLen:history?.length??0},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-query`, {
     method: 'POST',
@@ -51,6 +58,9 @@ export async function* streamAiResponse(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    // #region agent log
+    fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'F',location:'lib/ai/ai-client.ts:response',message:'AI request failed',data:{feature,status:response.status,error:(error as any)?.message??(error as any)?.error??'unknown'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     throw new Error(error.message ?? error.error ?? `HTTP ${response.status}`);
   }
 

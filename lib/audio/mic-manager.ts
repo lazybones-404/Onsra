@@ -57,6 +57,9 @@ class MicManager {
 
     try {
       const { status } = await Audio.requestPermissionsAsync();
+      // #region agent log
+      fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'B',location:'lib/audio/mic-manager.ts:start',message:'Mic permission result',data:{status},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (status !== 'granted') {
         useAudioStore.getState().setMicPermission(false);
         return;
@@ -71,9 +74,15 @@ class MicManager {
 
       this.active = true;
       useAudioStore.getState().setMicActive(true);
+      // #region agent log
+      fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'B',location:'lib/audio/mic-manager.ts:start',message:'Mic started',data:{chunkMs:CHUNK_DURATION_MS,sampleRate:SAMPLE_RATE},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       void this.recordLoop();
     } catch (err) {
       console.error('[MicManager] start error:', err);
+      // #region agent log
+      fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'B',location:'lib/audio/mic-manager.ts:start.catch',message:'Mic start error',data:{name:(err as any)?.name,message:(err as any)?.message},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     }
   }
 
@@ -102,6 +111,9 @@ class MicManager {
 
         if (!samples || samples.length < 1024) {
           useAudioStore.getState().setPitchResult(null);
+          // #region agent log
+          fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'C',location:'lib/audio/mic-manager.ts:recordLoop',message:'PCM decode too small/empty',data:{hasSamples:!!samples,len:samples?.length??0},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           continue;
         }
 
@@ -116,6 +128,9 @@ class MicManager {
             cents: noteInfo.cents,
             probability: pitch.probability,
           });
+          // #region agent log
+          fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'C',location:'lib/audio/mic-manager.ts:recordLoop',message:'Pitch detected',data:{freq:Math.round(pitch.frequency),prob:Math.round(pitch.probability*100)/100,note:noteInfo.note,oct:noteInfo.octave,cents:Math.round(noteInfo.cents)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         } else {
           useAudioStore.getState().setPitchResult(null);
         }

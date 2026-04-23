@@ -50,6 +50,9 @@ export function TunerScreen({ instrument }: TunerScreenProps) {
     if (autoDetect) {
       const closest = findClosestString(pitchResult.frequency, activeTuning.strings);
       if (closest.index !== selectedStringIndex) {
+        // #region agent log
+        fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'D',location:'components/practice/tuner/tuner-screen.tsx:autoDetect',message:'Auto-detect would change selected string (setState during render)',data:{from:selectedStringIndex,to:closest.index},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         setSelectedStringIndex(closest.index);
       }
       displayCents = closest.cents;

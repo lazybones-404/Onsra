@@ -65,6 +65,9 @@ export const useGigListStore = create<GigListState>((set, get) => ({
     try {
       const setlists = await getAllSetlists();
       set({ setlists });
+      // #region agent log
+      fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'G',location:'store/giglist-store.ts:loadSetlists',message:'Loaded setlists',data:{count:setlists.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } finally {
       set({ isLoading: false });
     }
@@ -73,6 +76,9 @@ export const useGigListStore = create<GigListState>((set, get) => ({
   async loadSongs() {
     const raw = await getAllSongs();
     set({ songs: raw.map(parseSong) });
+    // #region agent log
+    fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'G',location:'store/giglist-store.ts:loadSongs',message:'Loaded songs',data:{count:raw.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
   },
 
   async loadSetlistSongs(setlistId: string) {

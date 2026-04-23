@@ -24,6 +24,10 @@ export default function RootLayout() {
   useEffect(() => {
     async function bootstrap() {
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'A',location:'app/_layout.tsx:bootstrap',message:'Bootstrap start',data:{},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+
         // Sentry first so any bootstrap errors are captured
         initializeSentry();
 
@@ -41,6 +45,9 @@ export default function RootLayout() {
           const { data: { session } } = await supabase.auth.getSession();
           setSession(session);
           setUserContext(session?.user?.id ?? null);
+          // #region agent log
+          fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'A',location:'app/_layout.tsx:auth.getSession',message:'Supabase session loaded',data:{hasSession:!!session},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
 
           supabase.auth.onAuthStateChange((_event, newSession) => {
             setSession(newSession);
@@ -49,9 +56,15 @@ export default function RootLayout() {
         }
       } catch (err) {
         console.error('[Bootstrap] initialization error:', err);
+        // #region agent log
+        fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'A',location:'app/_layout.tsx:catch',message:'Bootstrap error',data:{name:(err as any)?.name,message:(err as any)?.message},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       } finally {
         setLoading(false);
         setReady(true);
+        // #region agent log
+        fetch('http://127.0.0.1:7309/ingest/5c21ba59-ddc3-47af-b5d6-81fd906f437d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'376e0b'},body:JSON.stringify({sessionId:'376e0b',runId:'pre-fix',hypothesisId:'A',location:'app/_layout.tsx:finally',message:'Bootstrap done',data:{},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       }
     }
 
