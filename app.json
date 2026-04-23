@@ -48,6 +48,15 @@
       "expo-router",
       "expo-sqlite",
       [
+        "react-native-audio-api",
+        {
+          "iosMicrophonePermission": "Onsra uses your microphone to detect pitch for tuning, chord identification, and vocal pitch display.",
+          "androidPermissions": [
+            "android.permission.RECORD_AUDIO"
+          ]
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
